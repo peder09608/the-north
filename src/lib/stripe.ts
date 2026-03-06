@@ -236,7 +236,7 @@ export async function cancelSubscription(
 export async function resumeSubscription(
   subscriptionId: string
 ): Promise<void> {
-  await stripe.subscriptions.update(subscriptionId, {
+  await getStripe().subscriptions.update(subscriptionId, {
     cancel_at_period_end: false,
   });
 }
