@@ -1,0 +1,319 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── AUTH & USERS ───────────────────────────────────────────
+
+enum UserRole {
+  CLIENT
+  ADMIN
+}
+
+enum AccountStatus {
+  ONBOARDING
+  PENDING_SETUP
+  ACTIVE
+  PAUSED
+  SUSPENDED
+  CHURNED
+}
+
+model User {
+  id             String        @id @default(cuid())
+  email          String        @unique
+  name           String?
+  passwordHash   String
+  role           UserRole      @default(CLIENT)
+  status         AccountStatus @default(ONBOARDING)
+  image          String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  clientAccount  ClientAccount?
+  changeRequests ChangeRequest[]
+
+  @@map("users")
+}
+
+// ─── CLIENT ACCOUNT ─────────────────────────────────────────
+
+model ClientAccount {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Google Ads sub-account
+  googleAdsCustomerId  String?  @unique
+  googleAdsAccountName String?
+
+  // Stripe
+  stripeCustomerId     String?  @unique
+  stripeSubscriptionId String?
+
+  // Google Tag Manager
+  gtmAccountId         String?
+  gtmContainerId       String?
+  gtmPublicId          String?           // GTM-XXXXXXX (user-facing)
+  gtmSnippetHead       String?  @db.Text // <script> snippet for <head>
+  gtmSnippetBody       String?  @db.Text // <noscript> snippet for <body>
+
+  // Settings (client-controllable)
+  monthlyBudget        Float?
+  isPaused             Boolean  @default(false)
+
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  onboarding           OnboardingResponse?
+  campaigns            Campaign[]
+  dailyMetrics         DailyMetrics[]
+  changeRequests       ChangeRequest[]
+  spendCharges         SpendCharge[]
+  alerts               Alert[]
+
+  @@map("client_accounts")
+}
+
+// ─── ONBOARDING ─────────────────────────────────────────────
+
+model OnboardingResponse {
+  id              String        @id @default(cuid())
+  clientAccountId String        @unique
+  clientAccount   ClientAccount @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
+
+  // Step 1: Business Basics
+  businessName        String?
+  websiteUrl          String?
+  industry            String?
+  industryOther       String?
+  businessDescription String?   @db.Text
+
+  // Step 2: Goals
+  campaignGoals       String[]
+  primaryGoal         String?
+  monthlyLeadTarget   Int?
+
+  // Step 3: Geographic Targeting
+  targetingType       String?
+  targetLocations     Json?
+  excludeLocations    Json?
+
+  // Step 4: Keywords & Audience
+  targetKeywords      String[]
+  negativeKeywords    String[]
+  targetAudience      String?   @db.Text
+  competitorNames     String[]
+
+  // Step 5: Budget
+  monthlyBudget       Float?
+  budgetFlexibility   String?
+
+  // Step 6: Ad Copy Inputs
+  uniqueSellingPoints String[]
+  callsToAction       String[]
+  promotions          String?   @db.Text
+  landingPageUrl      String?
+  phoneNumber         String?
+  businessAddress     String?   @db.Text
+
+  // Step 7: Additional
+  previousAdExperience String?
+  additionalNotes      String?  @db.Text
+
+  // Progress tracking
+  currentStep         Int       @default(1)
+  completedAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@map("onboarding_responses")
+}
+
+// ─── CAMPAIGNS & METRICS ────────────────────────────────────
+
+model Campaign {
+  id                String        @id @default(cuid())
+  clientAccountId   String
+  clientAccount     ClientAccount @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
+
+  googleCampaignId  String
+  name              String
+  status            String        // ENABLED, PAUSED, REMOVED
+  campaignType      String        // SEARCH, DISPLAY, PERFORMANCE_MAX
+  dailyBudget       Float?
+  targetLocations   Json?
+
+  lastSyncedAt      DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  campaignMetrics   CampaignDailyMetrics[]
+
+  @@unique([clientAccountId, googleCampaignId])
+  @@map("campaigns")
+}
+
+model DailyMetrics {
+  id              String        @id @default(cuid())
+  clientAccountId String
+  clientAccount   ClientAccount @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
+
+  date            DateTime      @db.Date
+  impressions     Int           @default(0)
+  clicks          Int           @default(0)
+  costMicros      BigInt        @default(0)
+  conversions     Float         @default(0)
+  conversionValue Float         @default(0)
+
+  createdAt       DateTime      @default(now())
+
+  @@unique([clientAccountId, date])
+  @@index([clientAccountId, date])
+  @@map("daily_metrics")
+}
+
+model CampaignDailyMetrics {
+  id              String   @id @default(cuid())
+  campaignId      String
+  campaign        Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  date            DateTime @db.Date
+  impressions     Int      @default(0)
+  clicks          Int      @default(0)
+  costMicros      BigInt   @default(0)
+  conversions     Float    @default(0)
+  conversionValue Float    @default(0)
+
+  createdAt       DateTime @default(now())
+
+  @@unique([campaignId, date])
+  @@index([campaignId, date])
+  @@map("campaign_daily_metrics")
+}
+
+model GeographicMetrics {
+  id              String   @id @default(cuid())
+  clientAccountId String
+  date            DateTime @db.Date
+
+  locationType    String   // country, state, city, zip
+  locationName    String
+  locationId      String?
+
+  impressions     Int      @default(0)
+  clicks          Int      @default(0)
+  costMicros      BigInt   @default(0)
+  conversions     Float    @default(0)
+
+  createdAt       DateTime @default(now())
+
+  @@unique([clientAccountId, date, locationId])
+  @@index([clientAccountId, date])
+  @@map("geographic_metrics")
+}
+
+// ─── CHANGE REQUESTS ────────────────────────────────────────
+
+enum ChangeRequestStatus {
+  PENDING
+  IN_REVIEW
+  APPROVED
+  COMPLETED
+  REJECTED
+}
+
+enum ChangeRequestType {
+  KEYWORD_ADDITION
+  KEYWORD_REMOVAL
+  AD_COPY_CHANGE
+  BUDGET_CHANGE
+  TARGETING_CHANGE
+  NEW_CAMPAIGN
+  PAUSE_CAMPAIGN
+  OTHER
+}
+
+model ChangeRequest {
+  id              String              @id @default(cuid())
+  clientAccountId String
+  clientAccount   ClientAccount       @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User                @relation(fields: [userId], references: [id])
+
+  type            ChangeRequestType
+  title           String
+  description     String              @db.Text
+  priority        String              @default("normal")
+
+  status          ChangeRequestStatus @default(PENDING)
+  adminNotes      String?             @db.Text
+  resolvedAt      DateTime?
+  resolvedBy      String?
+
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([clientAccountId, status])
+  @@map("change_requests")
+}
+
+// ─── BILLING ────────────────────────────────────────────────
+
+enum SpendChargeStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
+model SpendCharge {
+  id                  String            @id @default(cuid())
+  clientAccountId     String
+  clientAccount       ClientAccount     @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
+
+  amountCents         Int               // Amount charged (e.g. 30000 = $300)
+  rawSpendCents       Int               // Google Ads spend portion
+  markupCents         Int               // Markup portion
+  stripePaymentIntentId String?         @unique
+  status              SpendChargeStatus @default(PENDING)
+
+  periodStart         DateTime          @db.Date
+  periodEnd           DateTime          @db.Date
+
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  @@index([clientAccountId, createdAt])
+  @@map("spend_charges")
+}
+
+// ─── ALERTS ─────────────────────────────────────────────────
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+model Alert {
+  id              String        @id @default(cuid())
+  clientAccountId String
+  clientAccount   ClientAccount @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
+
+  severity        AlertSeverity
+  title           String
+  message         String        @db.Text
+  category        String        // budget, performance, billing, system
+
+  isRead          Boolean       @default(false)
+  isDismissed     Boolean       @default(false)
+
+  createdAt       DateTime      @default(now())
+
+  @@index([clientAccountId, isRead])
+  @@map("alerts")
+}
