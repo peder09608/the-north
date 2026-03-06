@@ -1,11 +1,17 @@
 import Stripe from "stripe";
 import { SPEND_CHARGE_THRESHOLD_CENTS, SUBSCRIPTION_PRICE_CENTS } from "./metrics";
 
-if (!process.env.STRIPE_SECRET_KEY) {
-  console.warn("STRIPE_SECRET_KEY not set — Stripe operations will fail");
-}
+let _stripe: Stripe | null = null;
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
+export function getStripe(): Stripe {
+  if (!_stripe) {
+    if (!process.env.STRIPE_SECRET_KEY) {
+      throw new Error("STRIPE_SECRET_KEY is not set");
+    }
+    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  }
+  return _stripe;
+}
 
 // ─── Customer Management ────────────────────────────────────
 
@@ -17,7 +23,7 @@ export async function createStripeCustomer(input: {
   name?: string;
   metadata?: Record<string, string>;
 }): Promise<string> {
-  const customer = await stripe.customers.create({
+  const customer = await getStripe().customers.create({
     email: input.email,
     name: input.name || undefined,
     metadata: {
@@ -43,7 +49,7 @@ export async function createSubscriptionCheckout(input: {
   // Find or create the $99/month price
   const priceId = await getOrCreateSubscriptionPrice();
 
-  const session = await stripe.checkout.sessions.create({
+  const session = await getStripe().checkout.sessions.create({
     customer: input.stripeCustomerId,
     mode: "subscription",
     line_items: [{ price: priceId, quantity: 1 }],
@@ -67,13 +73,13 @@ export async function createSubscriptionCheckout(input: {
  */
 async function getOrCreateSubscriptionPrice(): Promise<string> {
   // Check for existing product by metadata
-  const existingProducts = await stripe.products.search({
+  const existingProducts = await getStripe().products.search({
     query: `metadata["app"]:"the-north" AND metadata["type"]:"subscription"`,
   });
 
   if (existingProducts.data.length > 0) {
     const product = existingProducts.data[0];
-    const prices = await stripe.prices.list({
+    const prices = await getStripe().prices.list({
       product: product.id,
       active: true,
       limit: 1,
@@ -84,13 +90,13 @@ async function getOrCreateSubscriptionPrice(): Promise<string> {
   }
 
   // Create product + price
-  const product = await stripe.products.create({
+  const product = await getStripe().products.create({
     name: "The North — Monthly Management",
     description: "Google Ads campaign management subscription",
     metadata: { app: "the-north", type: "subscription" },
   });
 
-  const price = await stripe.prices.create({
+  const price = await getStripe().prices.create({
     product: product.id,
     unit_amount: SUBSCRIPTION_PRICE_CENTS,
     currency: "usd",
@@ -116,7 +122,7 @@ export async function createSpendCharge(input: {
   periodEnd: string;
 }): Promise<{ paymentIntentId: string; status: string }> {
   // Get the customer's default payment method from their subscription
-  const customer = await stripe.customers.retrieve(input.stripeCustomerId);
+  const customer = await getStripe().customers.retrieve(input.stripeCustomerId);
   if (customer.deleted) {
     throw new Error("Stripe customer has been deleted");
   }
@@ -126,7 +132,7 @@ export async function createSpendCharge(input: {
 
   if (!defaultPaymentMethod) {
     // Fall back: try to get the payment method from an active subscription
-    const subscriptions = await stripe.subscriptions.list({
+    const subscriptions = await getStripe().subscriptions.list({
       customer: input.stripeCustomerId,
       status: "active",
       limit: 1,
@@ -144,7 +150,7 @@ export async function createSpendCharge(input: {
     }
 
     // Create the payment intent with this payment method
-    const paymentIntent = await stripe.paymentIntents.create({
+    const paymentIntent = await getStripe().paymentIntents.create({
       amount: input.amountCents,
       currency: "usd",
       customer: input.stripeCustomerId,
@@ -167,7 +173,7 @@ export async function createSpendCharge(input: {
   }
 
   // Create and confirm the payment intent
-  const paymentIntent = await stripe.paymentIntents.create({
+  const paymentIntent = await getStripe().paymentIntents.create({
     amount: input.amountCents,
     currency: "usd",
     customer: input.stripeCustomerId,
@@ -199,7 +205,7 @@ export async function createPortalSession(input: {
   stripeCustomerId: string;
   returnUrl: string;
 }): Promise<string> {
-  const session = await stripe.billingPortal.sessions.create({
+  const session = await getStripe().billingPortal.sessions.create({
     customer: input.stripeCustomerId,
     return_url: input.returnUrl,
   });
@@ -216,9 +222,9 @@ export async function cancelSubscription(
   immediately = false
 ): Promise<void> {
   if (immediately) {
-    await stripe.subscriptions.cancel(subscriptionId);
+    await getStripe().subscriptions.cancel(subscriptionId);
   } else {
-    await stripe.subscriptions.update(subscriptionId, {
+    await getStripe().subscriptions.update(subscriptionId, {
       cancel_at_period_end: true,
     });
   }
