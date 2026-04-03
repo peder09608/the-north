@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
 import { provisionGtmContainer } from "@/lib/gtm";
+import { sendPaymentFailureEmail } from "@/lib/email";
 import Stripe from "stripe";
 
 /**
@@ -101,7 +102,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     await prisma.clientAccount.update({
       where: { id: clientAccountId },
       data: {
-        stripeCustomerId: session.customer as string,
+        stripeCustomerId: getCustomerId(session.customer) || "",
         stripeSubscriptionId: subscriptionId,
       },
     });
@@ -193,6 +194,7 @@ async function handleInvoiceFailed(invoice: Stripe.Invoice) {
 
   const account = await prisma.clientAccount.findUnique({
     where: { stripeCustomerId: customerId },
+    include: { user: { select: { email: true, name: true } } },
   });
 
   if (account) {
@@ -206,6 +208,18 @@ async function handleInvoiceFailed(invoice: Stripe.Invoice) {
         category: "billing",
       },
     });
+
+    // Send payment failure email
+    try {
+      const amountFormatted = `$${(invoice.amount_due / 100).toFixed(2)}`;
+      await sendPaymentFailureEmail({
+        to: account.user.email,
+        name: account.user.name || "there",
+        amountFormatted,
+      });
+    } catch (emailError) {
+      console.error("Failed to send payment failure email:", emailError);
+    }
   }
 }
 

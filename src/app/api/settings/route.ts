@@ -45,7 +45,7 @@ export async function PATCH(request: NextRequest) {
     updateData.isPaused = body.isPaused;
   }
 
-  if (typeof body.monthlyBudget === "number" && body.monthlyBudget >= 500) {
+  if (typeof body.monthlyBudget === "number" && body.monthlyBudget >= 500 && body.monthlyBudget <= 50000) {
     updateData.monthlyBudget = body.monthlyBudget;
   }
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { sendWelcomeEmail } from "@/lib/email";
 
 const serverSignupSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -58,6 +59,13 @@ export async function POST(request: Request) {
         clientAccountId: user.clientAccount!.id,
       },
     });
+
+    // Send welcome email (non-blocking — don't fail signup if email fails)
+    try {
+      await sendWelcomeEmail({ to: email, name });
+    } catch (emailError) {
+      console.error("Failed to send welcome email:", emailError);
+    }
 
     return NextResponse.json(
       { message: "Account created successfully" },

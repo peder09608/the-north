@@ -87,6 +87,23 @@ export const additionalSchema = z.object({
   additionalNotes: z.string().optional(),
 });
 
+// ─── Password Reset ─────────────────────────────────────────
+
+export const forgotPasswordSchema = z.object({
+  email: z.string().email("Invalid email address"),
+});
+
+export const resetPasswordSchema = z
+  .object({
+    token: z.string().min(1, "Reset token is required"),
+    password: z.string().min(8, "Password must be at least 8 characters"),
+    confirmPassword: z.string(),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords don't match",
+    path: ["confirmPassword"],
+  });
+
 // ─── Change Request ─────────────────────────────────────────
 
 export const changeRequestSchema = z.object({
@@ -117,3 +134,5 @@ export type BudgetInput = z.infer<typeof budgetSchema>;
 export type AdCopyInput = z.infer<typeof adCopySchema>;
 export type AdditionalInput = z.infer<typeof additionalSchema>;
 export type ChangeRequestInput = z.infer<typeof changeRequestSchema>;
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;

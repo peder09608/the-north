@@ -7,7 +7,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Public routes that don't require auth
-  const publicRoutes = ["/login", "/signup", "/"];
+  const publicRoutes = ["/login", "/signup", "/", "/forgot-password", "/reset-password"];
   const isPublicRoute = publicRoutes.includes(pathname);
   const isApiAuth = pathname.startsWith("/api/auth");
   const isApi = pathname.startsWith("/api");
@@ -23,7 +23,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Redirect authenticated users away from auth pages
-  if (token && (pathname === "/login" || pathname === "/signup")) {
+  if (token && (pathname === "/login" || pathname === "/signup" || pathname === "/forgot-password" || pathname === "/reset-password")) {
     if (token.status === "ONBOARDING") {
       return NextResponse.redirect(new URL("/onboarding", request.url));
     }

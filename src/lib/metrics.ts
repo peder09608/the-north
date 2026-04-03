@@ -1,4 +1,4 @@
-const MARKUP_RATE = parseFloat(process.env.MARKUP_RATE || "0.15");
+export const MARKUP_RATE = parseFloat(process.env.MARKUP_RATE || "0.15");
 
 export interface MarkedUpCost {
   rawSpendCents: number;

@@ -1,23 +1,44 @@
 import { GoogleAdsApi, enums, toMicros, MutateOperation, ResourceNames } from "google-ads-api";
 
-// ─── Client Initialization ─────────────────────────────────
+// ─── Client Initialization (lazy) ────────────────────────────
 
-const client = new GoogleAdsApi({
-  client_id: process.env.GOOGLE_ADS_CLIENT_ID!,
-  client_secret: process.env.GOOGLE_ADS_CLIENT_SECRET!,
-  developer_token: process.env.GOOGLE_ADS_DEVELOPER_TOKEN!,
-});
+let _client: GoogleAdsApi | null = null;
 
-const MCC_ID = process.env.GOOGLE_ADS_MCC_CUSTOMER_ID!;
-const REFRESH_TOKEN = process.env.GOOGLE_ADS_REFRESH_TOKEN!;
+function getClient(): GoogleAdsApi {
+  if (!_client) {
+    if (!process.env.GOOGLE_ADS_CLIENT_ID || !process.env.GOOGLE_ADS_CLIENT_SECRET || !process.env.GOOGLE_ADS_DEVELOPER_TOKEN) {
+      throw new Error("Google Ads API credentials are not set");
+    }
+    _client = new GoogleAdsApi({
+      client_id: process.env.GOOGLE_ADS_CLIENT_ID,
+      client_secret: process.env.GOOGLE_ADS_CLIENT_SECRET,
+      developer_token: process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
+    });
+  }
+  return _client;
+}
+
+function getMccId(): string {
+  if (!process.env.GOOGLE_ADS_MCC_CUSTOMER_ID) {
+    throw new Error("GOOGLE_ADS_MCC_CUSTOMER_ID is not set");
+  }
+  return process.env.GOOGLE_ADS_MCC_CUSTOMER_ID;
+}
+
+function getRefreshToken(): string {
+  if (!process.env.GOOGLE_ADS_REFRESH_TOKEN) {
+    throw new Error("GOOGLE_ADS_REFRESH_TOKEN is not set");
+  }
+  return process.env.GOOGLE_ADS_REFRESH_TOKEN;
+}
 
 /**
  * Get a Customer instance for the MCC manager account.
  */
 export function getMccCustomer() {
-  return client.Customer({
-    customer_id: MCC_ID,
-    refresh_token: REFRESH_TOKEN,
+  return getClient().Customer({
+    customer_id: getMccId(),
+    refresh_token: getRefreshToken(),
   });
 }
 
@@ -25,10 +46,10 @@ export function getMccCustomer() {
  * Get a Customer instance for a specific child account under the MCC.
  */
 export function getChildCustomer(childCustomerId: string) {
-  return client.Customer({
+  return getClient().Customer({
     customer_id: childCustomerId,
-    refresh_token: REFRESH_TOKEN,
-    login_customer_id: MCC_ID,
+    refresh_token: getRefreshToken(),
+    login_customer_id: getMccId(),
   });
 }
 
@@ -48,7 +69,7 @@ export async function createChildAccount(input: CreateAccountInput): Promise<str
   const manager = getMccCustomer();
 
   const response = await manager.customers.createCustomerClient({
-    customer_id: MCC_ID,
+    customer_id: getMccId(),
     customer_client: {
       descriptive_name: input.businessName,
       currency_code: input.currencyCode || "USD",
@@ -403,7 +424,7 @@ export async function fetchGeographicMetrics(
  * Simple test to verify MCC access — lists accessible customers.
  */
 export async function testMccConnection() {
-  const accessible = await client.listAccessibleCustomers(REFRESH_TOKEN);
+  const accessible = await getClient().listAccessibleCustomers(getRefreshToken());
   return accessible;
 }
 

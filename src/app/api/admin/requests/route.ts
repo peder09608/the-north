@@ -47,8 +47,12 @@ export async function PATCH(request: NextRequest) {
   const body = await request.json();
   const { id, status, adminNotes } = body;
 
+  const validStatuses = ["PENDING", "IN_REVIEW", "APPROVED", "COMPLETED", "REJECTED"];
   if (!id || !status) {
     return NextResponse.json({ error: "Missing id or status" }, { status: 400 });
+  }
+  if (!validStatuses.includes(status)) {
+    return NextResponse.json({ error: "Invalid status" }, { status: 400 });
   }
 
   const updated = await prisma.changeRequest.update({

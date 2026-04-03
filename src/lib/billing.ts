@@ -1,5 +1,5 @@
 import { prisma } from "./prisma";
-import { applyMarkup, SPEND_CHARGE_THRESHOLD_CENTS } from "./metrics";
+import { applyMarkup, MARKUP_RATE, SPEND_CHARGE_THRESHOLD_CENTS } from "./metrics";
 import { createSpendCharge } from "./stripe";
 import { format, startOfMonth } from "date-fns";
 
@@ -75,8 +75,7 @@ export async function checkAndChargeSpendThreshold(
     const chargeAmountCents = SPEND_CHARGE_THRESHOLD_CENTS;
 
     // Calculate raw vs markup split for this charge
-    const markupRate = 0.15;
-    const rawCents = Math.round(chargeAmountCents / (1 + markupRate));
+    const rawCents = Math.round(chargeAmountCents / (1 + MARKUP_RATE));
     const markupCents = chargeAmountCents - rawCents;
 
     try {
